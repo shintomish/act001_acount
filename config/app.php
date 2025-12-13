@@ -162,7 +162,7 @@ return [
         Illuminate\Translation\TranslationServiceProvider::class,
         Illuminate\Validation\ValidationServiceProvider::class,
         Illuminate\View\ViewServiceProvider::class,
-        // Kyslik\ColumnSortable\ColumnSortableServiceProvider::class,     // 2021/08/21 並び替えをcolumn-sortable使って
+        Kyslik\ColumnSortable\ColumnSortableServiceProvider::class,     // 2021/08/21 並び替えをcolumn-sortable使って
         Illuminate\Filesystem\FilesystemServiceProvider::class, // try to add file
         /*
          * Package Service Providers...
