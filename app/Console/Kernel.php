@@ -1,0 +1,84 @@
+<?php
+
+namespace App\Console;
+
+use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
+
+class Kernel extends ConsoleKernel
+{
+    /**
+     * The Artisan commands provided by your application.
+     *
+     * @var array
+     */
+    protected $commands = [
+
+        Commands\FileTmpDelete::Class,
+        Commands\File90Delete::Class,
+
+    ];
+
+    /**
+     * Define the application's command schedule.
+     *
+     * @param  \Illuminate\Console\Scheduling\Schedule  $schedule
+     * @return void
+     */
+    protected function schedule(Schedule $schedule)
+    {
+        // $schedule->command('inspire')->hourly();
+
+        // $schedule->call(new FileTmpDelete($schedule))   // uploadfileのtmpを削除
+        //             ->dailyAt('03:55');                 // 毎日AM3:55に実行する
+
+        // $schedule->command('command:FileTmpDelete')     // uploadfileのtmpを削除
+        //             ->dailyAt('03:55');                 // 毎日AM3:55に実行する
+
+        $schedule->command('cache:clear')
+                    ->dailyAt('04:00');                 // 毎日AM4:05に実行する
+        $schedule->command('route:clear')
+                    ->dailyAt('04:00');                 // 毎日AM4:10に実行する
+        $schedule->command('config:clear')
+                    ->dailyAt('04:00');                 // 毎日AM4:15に実行する
+        $schedule->command('view:clear')
+                    ->dailyAt('04:00');                 // 毎日AM4:20に実行する
+
+        $schedule->command('backup:clean')              // 古いバックアップファイルを削除
+                 ->dailyAt('04:55');                    // 毎日AM4:55に実行する
+
+        // DemoSv mail 通知しない 2023/01/12
+        // DBのみのバックアップにはオプション「–only-db」を指定
+        // DBのMAIL通知しないオプション「--disable-notifications」を指定
+        // $schedule->command('backup:run  --disable-notifications --only-db')
+        // config/backup.php notificationsを変更したらOK
+        $schedule->command('backup:run --only-db')      // DBのみのバックアップにはオプション「–only-db」を指定します。
+                 ->dailyAt('05:00');                    // 毎日AM5:00に実行する
+
+        // $schedule->call(new File90Delete($schedule))    // userdata配下の90日経過したファイルを削除
+        // 2024/07/10 コメントにする。要望
+        // $schedule->command('command:File90Delete')         // userdata配下の120日経過したファイルを削除(2022/08/30)
+        //          ->weeklyOn(0, '05:10');                // 毎週日曜日(0)AM5:10に実行する
+
+        // 2025/02/09 backup:run Comment
+        // $schedule->command('backup:run')
+        //          ->weeklyOn(0, '06:10');                // 毎週日曜日(0)AM6:00に実行する
+
+        // 2025/02/09 weekly-->twiceMonthly(1, 15, '03:00');
+        // $schedule->command('backup:run')
+        //     ->twiceMonthly(1, 15, '03:00');                // 毎月1日と15日の03:00に実行する
+
+    }
+
+    /**
+     * Register the commands for the application.
+     *
+     * @return void
+     */
+    protected function commands()
+    {
+        $this->load(__DIR__.'/Commands');
+
+        require base_path('routes/console.php');
+    }
+}

@@ -1,0 +1,54 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Notifications\Notifiable;
+use Kyslik\ColumnSortable\Sortable;         //追記 並び替えをcolumn-sortable使って
+
+class UploadUser extends Model
+{
+    use HasFactory, Notifiable;
+    use Sortable;                   //追記
+
+    // public $samples;
+    // public function __construct($value)
+    // {
+    //     // 親コンストラクタを呼び出す
+    //     parent::__construct();
+    //     $this->sampleValue = $value;
+    // }
+
+    // 自動更新を無効
+    // public $timestamps = false;
+
+    // 参照させたいSQLのテーブル名を指定
+    protected $table = 'uploadusers';
+
+    //追記(ソートに使うカラムを指定
+    public $sortable = [
+        'id',
+        'foldername',
+        // 'business_name',
+        'yearmonth',
+        'check_flg',
+        'prime_flg',
+        'created_at',
+        'updated_at'
+    ];
+    // 2024/01/13 ③　可能であれば「顧客名」と「更新日」の間に「決算月」を入れて頂けたら助かります
+    public $sortableAs = ['business_name','closing_month'];
+    /**
+     * The attributes that are mass assignable.
+     *
+     * @var array
+     */
+    protected $fillable = [
+        'foldername',
+        'business_name',
+        'yearmonth',
+        'organization_id',
+        'customer_id',
+    ];
+}

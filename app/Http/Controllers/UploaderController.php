@@ -1,0 +1,680 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use DateTime;
+use App\Models\ImageUpload;
+use App\Models\UploadUser;
+
+// 2025/03/18 add
+use Illuminate\Http\Request;
+// use Illuminate\Http\Request;
+
+// 2024/09/30
+// use Illuminate\Support\Str;
+
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
+
+// use Symfony\Component\HttpFoundation\Request;    // 2025/03/18 commennt
+
+$request = Request::createFromGlobals();
+use Flow\Config as FlowConfig;
+use Flow\Request as FlowRequest;
+// use League\CommonMark\Extension\CommonMark\Renderer\Block\ThematicBreakRenderer;
+
+// use Storage;
+// use Illuminate\Http\UploadedFile;
+// use Pion\Laravel\ChunkUpload\Exceptions\UploadFailedException;
+// use Pion\Laravel\ChunkUpload\Exceptions\UploadMissingFileException;
+// use Pion\Laravel\ChunkUpload\Handler\AbstractHandler;
+// use Pion\Laravel\ChunkUpload\Handler\HandlerFactory;
+// use Pion\Laravel\ChunkUpload\Receiver\FileReceiver;
+
+class UploaderController extends Controller
+{
+    /**
+     * Create a new controller instance.
+     *
+     * @return void
+     */
+    public function __construct()
+    {
+        $this->middleware(['auth', 'verified']);
+    }
+    /**
+     * postUpload_info uploaded file WEB ROUTE
+     * @param Request request
+     * @return JsonResponse
+     */
+    public function postUpload_info($customer_id)
+    {
+        Log::info('client postUpload_info  START');
+
+        // ログインユーザーのユーザー情報を取得する
+        $user = $this->auth_user_info();
+        $u_id = $user->id;
+        $o_id = $user->organization_id;
+
+        // ログインユーザーのCustomer情報からフォルダー名を取得する
+        $uploadusers     = $this->auth_user_foldername($customer_id);
+        $foldername      = $uploadusers->foldername;
+        $business_name   = $uploadusers->business_name;
+        if (isset($uploadusers->check_flg)) {
+            $check_flg   = $uploadusers->check_flg; //ファイル無し(1):ファイル有り(2)
+        } else {
+            $check_flg   = 1;
+        }
+        $folderpath      = 'app'. '/' . 'userdata'. '/' . $foldername;
+
+        // 年月取得
+        $now = DateTime::createFromFormat('U.u', number_format(microtime(true), 6, '.', ''));
+        $dateNew = ($now->format('Y/m'));
+
+        $compacts = compact( 'u_id','o_id', 'customer_id', 'foldername','business_name','folderpath','check_flg','dateNew' );
+
+        Log::info('client postUpload_info $compacts[customer_id]  = ' . print_r($compacts['customer_id'] ,true));
+
+        // * ログインユーザーのCustomerオブジェクトをjsonにSetする
+        $this->json_put_info_set($u_id, $o_id,$customer_id, $foldername, $business_name,$folderpath,$check_flg,$dateNew);
+
+        Log::info('client postUpload_info  END');
+
+        return  $compacts;
+
+    }
+
+    /**
+     * postUpload uploaded file WEB ROUTE
+     * @param Request request
+     * @return JsonResponse
+     */
+    public function postUpload($customer_id, Request $request)
+    {
+        Log::info('client postUpload  START');
+
+        $jsonfile = storage_path() . "/tmp/customer_info_status_". $customer_id. ".json";
+        $jsonUrl = $jsonfile; //JSONファイルの場所とファイル名を記述
+        $status = true;
+        if (file_exists($jsonUrl)) {
+            $json = file_get_contents($jsonUrl);
+            $json = mb_convert_encoding($json, 'UTF8', 'ASCII,JIS,UTF-8,EUC-JP,SJIS-WIN');
+
+            // 2023/09/20
+            $obj = [];
+
+            $obj = json_decode($json, true);
+
+            // 2023/09/20
+            if(empty($obj)){
+                $obj[0] = $this->postUpload_info($customer_id);
+                Log::info('client postUpload empty');
+            } else {
+                // $obj = $obj["res"]["info"];
+                $obj[0] = $this->postUpload_info($customer_id);
+                Log::info('client postUpload not empty');
+            }
+
+            // $obj = json_decode($json, true);
+            // $obj = $obj["res"]["info"];
+            // foreach($obj as $key => $val) {
+            //     $status = false;
+            //     $status = $val["status"];
+            // }
+            // Log::info('client postUpload  jsonUrl OK');
+        } else {
+            // echo "データがありません";
+            // Log::info('client postUpload  jsonUrl NG');
+
+        }
+
+        // ログインユーザーのユーザー情報を取得する
+        if($status == false) {
+            $ret  = $this->postUpload_info($customer_id);
+
+            // Statusを変える
+            $status = 99;
+            $this->json_put_status($status,$customer_id);
+        }
+
+        // * ログインユーザーのCustomerオブジェクトをjsonから取得する
+        $compacts = $this->json_get_info($customer_id);
+
+        $config = new FlowConfig();
+
+        // tmpフォルダをユーザーごとに変更
+        // $tmp = '/tmp'. '/' . $compacts['u_id'];
+        // tmpフォルダをCustomeridごとに変更
+        $tmp = '/tmp'. '/' . $customer_id;
+
+        // 2025/05/21 Start
+        // ✅ 解決策3：try-catchで安全に mkdir 実行
+        // 競合が頻繁に起きる場合は、エラーハンドリングを行っておくとさらに安全です。
+        // if(!file_exists( storage_path() . $tmp)){
+        //     mkdir( storage_path() . $tmp, $mode = 0777, true);
+        // }
+        $path = storage_path() . $tmp;
+        if (!is_dir($path)) {
+            try {
+                mkdir($path, 0777, true);
+            } catch (\Exception $e) {
+                if (!is_dir($path)) {
+                    throw $e; // まだ存在しないなら例外再スロー
+                }
+                // 既に誰かが作った場合は無視
+            }
+        }
+        // 2025/05/21 END
+
+        $config->setTempDir(storage_path() . $tmp);
+        $config->setDeleteChunksOnSave(false);
+
+        // 2025/03/18 Start
+        // $file = $request->file('file');
+        // $filename00 = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
+        // $extension = $file->getClientOriginalExtension();
+        // 2025/03/18 End
+
+        // 2025/10/12 （空白クリーン対応）空白除去処理 Start
+        $file = $request->file('file');
+
+        // 元のファイル名を取得してクリーン化
+        $originalName = $file->getClientOriginalName();
+        $cleanName = trim($originalName);
+        $cleanName = preg_replace('/\s+/', ' ', $cleanName);
+        $cleanName = preg_replace('/　+/', '　', $cleanName);
+        $cleanName = preg_replace('/[\\\\\\/\\:\\*\\?\\"<>\\|]/', '_', $cleanName); // 禁止文字置換
+
+        $filename00 = pathinfo($cleanName, PATHINFO_FILENAME);
+        $extension = pathinfo($cleanName, PATHINFO_EXTENSION);
+        // 2025/10/12 （空白クリーン対応）空白除去処理 End
+
+        $file = new \Flow\File($config);
+
+        $request = new FlowRequest();
+
+        $totalSize = $request->getTotalSize();
+
+        // アップロード可能なサイズは 30MB
+        $maxtataldisp = 30;
+        $maxtatalsize = (1024 * 1024 * $maxtataldisp);
+        if ($totalSize && $totalSize > $maxtatalsize)
+        {
+            $errormsg = 'ファイルサイズが大きすぎます。アップロード可能なサイズは '. $maxtataldisp. ' MBまでです。';
+            Log::info('client postUpload  failesize to big ');
+            // Statusを変える
+            $status = false;
+            $this->json_put_status($status,$customer_id);
+            //400 Bad Request	一般的なクライアントエラー
+            return \Response::json(['error'=>$errormsg,'status'=>'BG'],400);
+
+        }
+
+        $uploadFile = $request->getFile();
+        // Log::debug('client postUpload $uploadFile[name] = ' . print_r($uploadFile['name'] ,true));
+        // $length_mb_strlen  = mb_strlen($uploadFile['name']);
+
+        //---- 2024/09/30 Failed to open stream: File name too long 対応
+        $length_strlen  = strlen($uploadFile['name']);
+        $maxtatallength = 255;
+        if ($length_strlen > $maxtatallength)
+        {
+            $errormsg = 'ファイル名が長過ぎます。アップロード可能なファイル名長は '. $maxtatallength. ' 文字までです。';
+            Log::info('client postUpload  failesize to big ');
+            Log::debug('client postUpload $length_strlen error = ' . print_r($length_strlen ,true));
+            Log::debug('client postUpload $uploadFile[name] = ' . print_r($uploadFile['name'] ,true));
+
+            // Statusを変える
+            $status = false;
+            $this->json_put_status($status,$customer_id);
+            //400 Bad Request	一般的なクライアントエラー 2025/02/04 BG->BGstrlen
+            return \Response::json(['error'=>$errormsg,'status'=>'BGstrlen'],400);
+
+        }
+        Log::debug('client postUpload $length_strlen = ' . print_r($length_strlen ,true));
+        //----
+
+        if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+            if ($file->checkChunk()) {
+                header("HTTP/1.1 200 Ok");
+                Log::info('client postUpload HTTP/1.1 200 Ok ');
+            } else {
+                //HTTP のレスポンスコード 204 No Content は、リクエストが成功した事を示しますが、
+                //クライアントは現在のページから遷移する必要はありません。
+                //レスポンスコード 204 が返された場合は、デフォルトでキャッシュ可能になっています。
+                //そのようなレスポンスには、 ETag ヘッダーが含まれています。
+                header("HTTP/1.1 204 No Content");
+                Log::info('client postUpload HTTP/1.1 204 No Content ');
+                return ;
+            }
+        } else {
+            if ($file->validateChunk()) {
+                // Log::info('client postUpload validateChunk ok ');
+                $file->saveChunk();
+            } else {
+
+                // // Statusを変える
+                // $status = false;
+                // $this->json_put_status($status,$customer_id);
+
+                //「400 Bad Request」は、不正な構文、無効なリクエストメッセージフレーミング、
+                //または不正なリクエストルーティングのために、サーバーがクライアントによって
+                //送信されたリクエストを処理できなかったことを示すHTTPステータスコードです。
+                // error, invalid chunk upload request, retry
+                header("HTTP/1.1 400 Bad Request");
+                Log::debug('client postUpload HTTP/1.1 400 Bad Request ');
+                return ;
+
+                // // strage/tmp
+                // $file->deleteChunks();
+                // Log::debug('client postUpload HTTP/1.1 400 Bad Request ');
+                // Log::debug('client postUpload_info  validateChunk not   $uploadFile[name]  = ' . print_r($uploadFile['name'] ,true));
+
+                $errormsg = 'アップロード出来ませんでした。';
+                // Indicate that we are not done with all the chunks.
+                return \Response::json(['error'=>$errormsg,'status'=>'NG'], 400);
+                // return redirect('topclient/index')->with('message', '送信処理出来ませんでした。');
+            }
+        }
+
+        // $fileName = $uploadFile['name'];      // FileName 2025/03/18 comment
+
+        $fileSize = $request->getTotalSize();    // FileSize
+        $filedir = '/app/userdata/' . $compacts['foldername'] . '/';
+
+        // 2025/03/18 add Start
+        // 重複がないファイル名を探す
+        $counter = 1;
+        $uniqueFilename = $filename00 . '.' . $extension;
+        // Log::debug('client postUpload $uniqueFilename = ' . print_r($uniqueFilename ,true));
+        // Log::debug('client postUpload $storage_path = ' . print_r(storage_path() . $filedir . $uniqueFilename ,true));
+        while (file_exists(storage_path() . $filedir . $uniqueFilename)) {
+            $uniqueFilename = $filename00 . '_' . $counter . '.' . $extension;
+            Log::debug('client postUpload file_exists $uniqueFilename = ' . print_r($uniqueFilename ,true));
+            $counter++;
+        }
+        $fileName = $uniqueFilename;
+
+        // Log::debug('client postUpload $fileName = ' . print_r($fileName ,true));
+        // if (file_exists($fullpatname)) {
+        //     $fileName = $filename00 . '_' . $counter . '.' . $extension;
+        // }
+        // 2025/03/18 End
+
+        // 2025/05/21 Start
+        // ✅ 解決策3：try-catchで安全に mkdir 実行
+        // 競合が頻繁に起きる場合は、エラーハンドリングを行っておくとさらに安全です。
+        // if(!file_exists( storage_path() . $filedir)){
+        //     mkdir( storage_path() . $filedir, $mode = 0777, true);
+        // }
+        $path = storage_path() . $filedir;
+        if (!is_dir($path)) {
+            try {
+                mkdir($path, 0777, true);
+            } catch (\Exception $e) {
+                if (!is_dir($path)) {
+                    throw $e; // まだ存在しないなら例外再スロー
+                }
+                // 既に誰かが作った場合は無視
+            }
+        }
+        // 2025/05/21 END
+
+        //2023/09/14 Middleware\ActlogMiddleware::classをコメント
+        // $tmp_name = $uploadFile['tmp_name'];     // tmp_name
+        // if(!file_exists( $tmp_name)){
+        //     mkdir( $tmp_name, $mode = 0777, true);
+        // }
+        // Log::debug('client postUpload  $tmp_name = ' . print_r($tmp_name ,true));
+
+        // 2023/02/13 ERROR: Undefined array key "extension"
+        // $identifier = md5($uploadFile['name']).'-' . time() ;
+        // $p = pathinfo($uploadFile['name']);
+        // /* hashファイル名と拡張子を結合 */
+        // $identifier .= "." . $p['extension'];
+
+        /* アップロードパス */
+        // $path =  $filedir . $identifier;
+        $path =  $filedir . $fileName;
+        $storage_path = storage_path() . $path;
+
+        Log::info('client postUpload  $fileName = ' . print_r($fileName,true));
+        if ($file->validateFile() && $file->save($storage_path))
+        {
+            // strage/tmp
+            $file->deleteChunks();
+
+            try {
+                DB::beginTransaction();
+                Log::info('beginTransaction - client postUpload saveFile start');
+
+                $imageUpload = new ImageUpload();
+                $imageUpload->filename        = $fileName;
+                $imageUpload->organization_id = $compacts['o_id'];
+                $imageUpload->user_id         = $compacts['u_id'];
+                $imageUpload->customer_id     = $compacts['customer_id'];
+                $imageUpload->filesize        = $fileSize;
+                $imageUpload->save();               //  Inserts
+
+                $data['count'] = UploadUser::where('customer_id',$compacts['customer_id'])->count();
+
+                //更新
+                if( $data['count'] > 0 ) {
+                    // 優先順位 1:- 2:低 3:中 4:高 5:急 2024/01/13
+                    // 「高」「急」に設定している場合、お客様が追加アップしても、変わらないようにしてください。
+                    $uploadusers = DB::table('uploadusers')
+                    // ユーザーの絞り込み
+                    ->where('customer_id',$compacts['customer_id'])
+                    // 削除されていない
+                    ->whereNull('deleted_at')
+                    ->first();
+                    if($uploadusers->prime_flg <= 3) {
+                        $prime_flg = 3;
+                    } else {
+                        $prime_flg = $uploadusers->prime_flg;
+                    }
+                    // 2024/01/13 END
+                    $uploadusers = DB::table('uploadusers')
+                    // ユーザーの絞り込み
+                    ->where('customer_id',$compacts['customer_id'])
+                    // 削除されていない
+                    ->whereNull('deleted_at')
+                    ->update([
+                        'yearmonth'  =>  $compacts['dateNew'],
+                        'check_flg'  =>  2,             // ファイル無し(1):ファイル有り(2)
+                        'prime_flg'  =>  $prime_flg,    // 優先順位 1:- 2:低 3:中 4:高 5:急 2022/11/04
+                        // 'created_at' =>  now()  2022/12/16
+                        'updated_at' =>  now()
+                    ]);
+                //追加
+                } else {
+                    $uploaduser = new UploadUser();
+                    $uploaduser->foldername      = $compacts['foldername'];     // フォルダー000x
+                    $uploaduser->business_name   = $compacts['business_name'];  // 顧客名
+                    $uploaduser->organization_id = $compacts['o_id'];
+                    $uploaduser->customer_id     = $compacts['customer_id'];
+                    $uploaduser->yearmonth       = $compacts['dateNew'];        // 年月 2021/08
+                    $uploaduser->check_flg       = 2;                           // ファイル無し(1):ファイル有り(2)
+                    $uploaduser->prime_flg       = 3;                           // 優先順位 -(1): 低(2): 中(3): 高(4) 2022/11/04
+                    $uploaduser->save();                                        // Inserts
+                }
+
+                DB::commit();
+                Log::info('beginTransaction - client postUpload saveFile end(commit)');
+
+                // ✅ 1. 重複レコードの確認（customer_id が重複している）2025/05/22 Start
+                $duplicates = DB::select("
+                    SELECT customer_id, COUNT(*) AS cnt
+                    FROM uploadusers
+                    WHERE deleted_at IS NULL
+                    GROUP BY customer_id
+                    HAVING cnt > 1
+                ");
+
+                foreach ($duplicates as $dup) {
+                    logger("重複: customer_id={$dup->customer_id}, 件数={$dup->cnt}");
+                }
+                // ✅ 2. 削除対象レコードの確認（SELECT * で最新1件以外を表示）
+                // MAX(id) → MIN(id) に変えれば「最古の1件を残す」動きになります。
+                $toDelete = DB::select("
+                    SELECT *
+                    FROM uploadusers
+                    WHERE id NOT IN (
+                        SELECT * FROM (
+                            SELECT MIN(id) AS id
+                            FROM uploadusers
+                            WHERE deleted_at IS NULL
+                            GROUP BY customer_id
+                        ) AS keep_ids
+                    )
+                    AND customer_id IN (
+                        SELECT customer_id
+                        FROM (
+                            SELECT customer_id
+                            FROM uploadusers
+                            WHERE deleted_at IS NULL
+                            GROUP BY customer_id
+                            HAVING COUNT(*) > 1
+                        ) AS dup_ids
+                    )
+                    AND deleted_at IS NULL
+                ");
+
+                foreach ($toDelete as $row) {
+                    logger("削除対象: id={$row->id}, customer_id={$row->customer_id}, created_at={$row->created_at}");
+                }
+                // ✅ 3. 実際に削除実行（DB::statement() で DELETE）
+                // MAX(id) → MIN(id) に変えれば「最古の1件を残す」動きになります。
+                DB::statement("
+                    DELETE FROM uploadusers
+                    WHERE id NOT IN (
+                        SELECT * FROM (
+                            SELECT MIN(id) AS id
+                            FROM uploadusers
+                            WHERE deleted_at IS NULL
+                            GROUP BY customer_id
+                        ) AS keep_ids
+                    )
+                    AND customer_id IN (
+                        SELECT customer_id
+                        FROM (
+                            SELECT customer_id
+                            FROM uploadusers
+                            WHERE deleted_at IS NULL
+                            GROUP BY customer_id
+                            HAVING COUNT(*) > 1
+                        ) AS dup_ids
+                    )
+                    AND deleted_at IS NULL
+                ");
+                Log::info('beginTransaction - client postUpload saveFile end(重複レコードの確認)');
+
+            }
+            catch(\QueryException $e) {
+                Log::error('exception : ' . $e->getMessage());
+                DB::rollback();
+                Log::info('beginTransaction - client postUpload saveFile end(rollback)');
+                // Statusを変える
+                $status = false;
+                $this->json_put_status($status,$customer_id);
+                $errormsg = 'アップロード出来ませんでした。';
+                return \Response::json(['error'=>$errormsg,'status'=>'NG'], 400);
+            }
+
+            // Statusを変える
+            $status = false;
+            $this->json_put_status($status,$customer_id);
+
+            Log::info('client postUpload  END');
+
+            // $data = 'ok';
+            // return \Response::json($data, 200);
+            return \Response::json(['error'=>'アップロードが正常に終了しました。','status'=>'OK'], 200);
+        } else {
+            // This is not a final chunk, continue to upload
+            Log::info('client postUpload  This is not a final chunk, continue to upload ');
+        }
+
+    }
+    /**
+     * ログインユーザーのCustomerオブジェクトをSetする
+     */
+    public function json_put_status($status,$customer_id)
+    {
+        Log::info('client json_put_status  START');
+
+        $jsonfile = "";
+        $arr = array(
+            "res" => array(
+                "info" => array(
+                    [
+                        "status"     => $status
+                    ]
+                )
+            )
+        );
+
+        $arr_status = json_encode($arr);
+        $jsonfile = storage_path() . "/tmp/customer_info_status_". $customer_id. ".json";
+
+        file_put_contents($jsonfile , $arr_status);
+        Log::info('client json_put_status  END');
+    }
+
+    /**
+     * ログインユーザーのCustomerオブジェクトをSetする
+     */
+    public function json_put_info_set($u_id, $o_id,$customer_id, $foldername, $business_name,$folderpath,$check_flg,$dateNew)
+    {
+        Log::info('client json_put_info_set  START');
+
+        $arr = array(
+            "res" => array(
+                "info" => array(
+                    [
+                        "u_id"           => $u_id,
+                        "o_id"           => $o_id,
+                        "customer_id"    => $customer_id,
+                        "foldername"     => $foldername,
+                        "business_name"  => $business_name,
+                        "folderpath"     => $folderpath,
+                        "check_flg"      => $check_flg,
+                        "dateNew"        => $dateNew
+                    ]
+                )
+            )
+        );
+
+        $arr = json_encode($arr);
+        $jsonfile = storage_path() . "/tmp/customer_info_". $customer_id. ".json";
+
+        file_put_contents($jsonfile , $arr);
+        Log::info('client json_put_info_set  END');
+    }
+
+    /**
+     * ログインユーザーのCustomerオブジェクトを取得する
+     */
+    public function json_get_info($customer_id)
+    {
+        Log::info('client json_get_info  START');
+
+        $jsonfile = storage_path() . "/tmp/customer_info_". $customer_id. ".json";
+
+        // Log::debug('client json_get_info  jsonfile = ' . print_r($jsonfile,true));
+
+        // $jsonUrl = "customer_info.json"; //JSONファイルの場所とファイル名を記述
+        $jsonUrl = $jsonfile; //JSONファイルの場所とファイル名を記述
+        if (file_exists($jsonUrl)) {
+            $json = file_get_contents($jsonUrl);
+            $json = mb_convert_encoding($json, 'UTF8', 'ASCII,JIS,UTF-8,EUC-JP,SJIS-WIN');
+
+            // 2023/09/20
+            $obj = [];
+
+            $obj = json_decode($json, true);
+
+            // 2023/09/20
+            if(empty($obj)){
+                $obj[0] = $this->postUpload_info($customer_id);
+                Log::info('client json_get_info empty');
+            } else {
+                $obj = $obj["res"]["info"];
+                Log::info('client json_get_info not empty');
+            }
+
+            foreach($obj as $key => $val) {
+                $u_id          = $val["u_id"];
+                $o_id          = $val["o_id"];
+                $customer_id   = $val["customer_id"];
+                $foldername    = $val["foldername"];
+                $business_name = $val["business_name"];
+                $folderpath    = $val["folderpath"];
+                $check_flg     = $val["check_flg"];
+                $dateNew       = $val["dateNew"];
+            }
+            // Log::info('client json_get_info  OK');
+        } else {
+            echo "データがありません";
+            Log::info('client json_get_info  NG');
+        }
+        $compacts = compact( 'u_id','o_id', 'customer_id', 'foldername','business_name','folderpath','check_flg','dateNew' );
+
+        Log::info('client json_get_info  END');
+        return  $compacts;
+    }
+
+    /**
+     * Delete uploaded file WEB ROUTE
+     * @param Request request
+     * @return JsonResponse
+     */
+    public function delete(Request $request){
+
+        //-------------------------------------------------------------
+        //- Request パラメータ
+        //-------------------------------------------------------------
+        $customer_id = $request->Input('customer_id');
+
+        // ログインユーザーのユーザー情報を取得する
+        $user = $this->auth_user_info();
+        $u_id = $user->id;
+
+        // ログインユーザーのCustomer情報からフォルダー名を取得する
+        $uploadusers     = $this->auth_user_foldername($customer_id);
+        $foldername      = $uploadusers->foldername;
+        $business_name   = $uploadusers->business_name;
+        $filePath        = 'app'. '/' . 'userdata'. '/' . $foldername;
+
+        $file = $request->filename;
+
+        //delete timestamp from filename
+        $temp_arr = explode('_', $file);
+        if ( isset($temp_arr[0]) ) unset($temp_arr[0]);
+        $file = implode('_', $temp_arr);
+
+        $finalPath = storage_path("app/".$filePath);
+
+        if ( unlink($finalPath.$file) ){
+        return response()->json([
+            'status' => 'ok'
+            ], 200);
+        }
+        else{
+        return response()->json([
+            'status' => 'error'
+            ], 403);
+        }
+    }
+
+    /**
+     * アップロードファイルのバリデート
+     * （※本来はFormRequestClassで行うべき）
+     *
+     * @param Request $request
+     * @return Illuminate\Validation\Validator
+     */
+    private function validateUploadFile(Request $request)
+    {
+        $rules   = [
+            // maxはキロバイト指定になるので、max:1024と指定すると、
+            // 1メガバイト以上だとエラーが出る OUTLOOKは20M
+            // 300 MB  307200 KB
+            // 500 MB  512000 KB
+            // 'file'     => 'required|file',
+            'file'     => 'required|file|max:512000',
+        ];
+
+        $messages = [
+            'file.required'  => 'ファイルを選択してください。',
+            'file.file'      => 'ファイルアップロード出来ませんでした。',
+            'file.max'       => 'ファイルサイズが大きすぎます。'
+        ];
+
+        $validator = Validator::make($request->all(), $rules, $messages);
+
+        return $validator;
+    }
+
+}
