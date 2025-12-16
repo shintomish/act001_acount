@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Log;
 
 use App\Models\Actlog;
 use App\Models\User;
-use App\Facades\Csv;
+// use App\Facades\Csv;
 
 class ActlogController extends Controller
 {
@@ -38,7 +38,6 @@ class ActlogController extends Controller
         // return ['data' => $actlog];
     }
 
-
     public function download(Request $request)
     {
         Log::Debug(__CLASS__.':'.__FUNCTION__, $request->all());
@@ -58,6 +57,7 @@ class ActlogController extends Controller
         $head[] = 'name';
 
         // CSV DOWNLOAD
-        return Csv::download($data, $head, 'test.csv');
+        // return Csv::download($data, $head, 'test.csv');
+        return ['data'];
     }
 }
