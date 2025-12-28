@@ -323,6 +323,7 @@ class AppServiceProvider extends ServiceProvider
             '02' => array ( 'no'=> 2023,  'name'=>'2023年', ),
             '03' => array ( 'no'=> 2024,  'name'=>'2024年', ),
             '04' => array ( 'no'=> 2025,  'name'=>'2025年', ),      // 2024/12/29
+            '05' => array ( 'no'=> 2026,  'name'=>'2026年', ),      // 2025/12/29
         );
         view()->share('loop_year_flg', $loop_year_flg);
 
