@@ -93,7 +93,7 @@ Route::get('transserch',          'App\Http\Controllers\TransHistoryController@s
 //-----------------------------------------------------------------------------------------------
 Route::get('top/index',        'App\Http\Controllers\TopController@index')->name('top');
 Route::post('top/update_api',  'App\Http\Controllers\TopController@update_api')->name('top.update_api');
-Route::post('top/reset_api',   'App\Http\Controllers\TopController@reset_api')->name('top.reset_api');
+Route::post('top/reset_api',   'App\Http\Controllers\TopController@reset_api')->name('top.reset_api');  //2026/03/31
 Route::resource('top',         'App\Http\Controllers\TopController');
 
 //-----------------------------------------------------------------------------------------------
