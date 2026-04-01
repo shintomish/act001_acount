@@ -93,6 +93,7 @@ Route::get('transserch',          'App\Http\Controllers\TransHistoryController@s
 //-----------------------------------------------------------------------------------------------
 Route::get('top/index',        'App\Http\Controllers\TopController@index')->name('top');
 Route::post('top/update_api',  'App\Http\Controllers\TopController@update_api')->name('top.update_api');
+Route::post('top/reset_api',   'App\Http\Controllers\TopController@reset_api')->name('top.reset_api');
 Route::resource('top',         'App\Http\Controllers\TopController');
 
 //-----------------------------------------------------------------------------------------------
@@ -153,6 +154,7 @@ Route::get('filemngdown',    'App\Http\Controllers\FilemngController@alldwonload
 Route::get('filemngdell',    'App\Http\Controllers\FilemngController@alldelete')->name('filemngdell');
 Route::post('filemngpost',   'App\Http\Controllers\FilemngController@post')->name('filemngpost');
 Route::post('filemngupdate',   'App\Http\Controllers\FilemngController@update_api')->name('filemngupdate');
+Route::post('filemngdownsel',  'App\Http\Controllers\FilemngController@downloadSelected')->name('filemngdownsel');
 Route::resource('filemng',   'App\Http\Controllers\FilemngController');
 
 //-----------------------------------------------------------------------------------------------
