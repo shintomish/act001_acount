@@ -323,7 +323,11 @@ class FilemngController extends Controller
 
         // サーバー側で使う一時的なZIPファイル名（ASCIIのみ、ユニークにする）
         $tmpZipFile = uniqid('download_') . '.zip';
-        $fullpath   = storage_path('tmp/' . $tmpZipFile);
+        $tmpDir = storage_path('tmp');
+        if (!is_dir($tmpDir)) {
+            mkdir($tmpDir, 0775, true);
+        }
+        $fullpath   = $tmpDir . '/' . $tmpZipFile;
 
         //Zipクラスロード
         $zip = new \ZipArchive();
@@ -445,7 +449,11 @@ class FilemngController extends Controller
 
         // 一時ZIPファイル（英数字のみで一意な名前）
         $tmpZipFile = uniqid('download_') . '.zip';
-        $zipFullPath = storage_path("tmp/{$tmpZipFile}");
+        $tmpDir = storage_path('tmp');
+        if (!is_dir($tmpDir)) {
+            mkdir($tmpDir, 0775, true);
+        }
+        $zipFullPath = $tmpDir . '/' . $tmpZipFile;
 
         // ZipArchiveを初期化
         $zip = new \ZipArchive();
@@ -600,7 +608,11 @@ class FilemngController extends Controller
         }
 
         $tmpZipFile = uniqid('sel_dl_') . '.zip';
-        $zipFullPath = storage_path("tmp/{$tmpZipFile}");
+        $tmpDir = storage_path('tmp');
+        if (!is_dir($tmpDir)) {
+            mkdir($tmpDir, 0775, true);
+        }
+        $zipFullPath = $tmpDir . '/' . $tmpZipFile;
 
         $zip = new \ZipArchive();
         $result = $zip->open($zipFullPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE);
