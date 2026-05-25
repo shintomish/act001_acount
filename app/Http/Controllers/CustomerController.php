@@ -51,7 +51,7 @@ class CustomerController extends Controller
                             ->sortable()
                             ->paginate(300);
         } else {
-            $customers = Customer::where('organization_id','=',$organization_id)
+            $customers = Customer::where('organization_id','>=',$organization_id)
                             ->whereNull('deleted_at')
                             // `active_cancel` 1:契約 2:SPOT 3:解約',
                             ->orderBy('active_cancel', 'asc')
@@ -259,7 +259,7 @@ class CustomerController extends Controller
         Log::info('beginTransaction - three_tableinsert start');
         $organization_id = 1;
         try {
-            $customers = Customer::where('organization_id','=',$organization_id)
+            $customers = Customer::where('organization_id','>=',$organization_id)
                             // `active_cancel` 1:契約 2:SPOT 3:解約',
                             ->where('active_cancel','=', 1)
                             ->whereNull('deleted_at')
@@ -662,73 +662,43 @@ class CustomerController extends Controller
     {
         Log::info('customer serch START');
 
-        //-------------------------------------------------------------
-        //- Request パラメータ
-        //-------------------------------------------------------------
-        $keyword  = $request->Input('keyword');     //顧客名
-        $keyword2 = $request->Input('keyword2');    //代表者名
+        $keyword  = $request->input('keyword');
+        $keyword2 = $request->input('keyword2');
 
-        $organization  = $this->auth_user_organization();
+        $organization    = $this->auth_user_organization();
         $organization_id = $organization->id;
 
-        // 2024/02/22 represent_name = [NULL](レコード上)対応
-        //（NULL型）の場合：TRUE
-        // 両方が入力された
-        if ((is_null($keyword) == false ) && (is_null($keyword2) == false ) ) {
-            Log::info('customer serch 1');
-                $customers = Customer::where('organization_id','=',$organization_id)
-                    ->where('business_name', 'like', "%$keyword%")
-                    ->where('represent_name', 'like', "%$keyword2%")
-                    ->whereNull('deleted_at')
-                    ->orderBy('active_cancel', 'asc')
-                    ->sortable()
-                    ->paginate(300);
-        } else {
-            // 顧客名が入力された
-            if ((is_null($keyword) == false ) && (is_null($keyword2) == true ) ) {
-                Log::info('customer serch 2');
-                $customers = Customer::where('organization_id','=',$organization_id)
-                    ->where('business_name', 'like', "%$keyword%")
-                    ->whereNull('deleted_at')
-                    ->orderBy('active_cancel', 'asc')
-                    ->sortable()
-                    ->paginate(300);
-            // 代表者名が入力された
-            } elseif ((is_null($keyword) == true ) && (is_null($keyword2) == false ) ) {
-                Log::info('customer serch 3');
-                $customers = Customer::where('organization_id','=',$organization_id)
-                    ->where('represent_name', 'like', "%$keyword2%")
-                    ->whereNull('deleted_at')
-                    ->orderBy('active_cancel', 'asc')
-                    ->sortable()
-                    ->paginate(300);
-            // 両方が未入力
-            } else {
-                Log::info('customer serch 4');
-                $customers = Customer::where('organization_id','=',$organization_id)
-                    ->whereNull('deleted_at')
-                    ->orderBy('active_cancel', 'asc')
-                    ->sortable()
-                    ->paginate(300);
-            }
-        };
+        // 2026/05/25 修正:
+        //   ・is_null() → filled() に変更（空文字でも未入力として扱う）
+        //   ・organization_id の比較を = から >= に変更（index() と整合を取る）
+        $query = Customer::where('organization_id', '>=', $organization_id)
+            ->whereNull('deleted_at');
 
-        // toastrというキーでメッセージを格納
-        // session()->flash('toastr', config('toastr.serch'));
-        $common_no ='00_2';
+        if (filled($keyword)) {
+            $query->where('business_name', 'like', "%{$keyword}%");
+            Log::info('customer serch keyword applied');
+        }
 
-        $keyword   = $keyword;
-        $keyword2  = $keyword2;
-        // 2022/08/26
-        $frdate  = null;
-        $todate  = null;
+        if (filled($keyword2)) {
+            $query->where('represent_name', 'like', "%{$keyword2}%");
+            Log::info('customer serch keyword2 applied');
+        }
 
-        $compacts = compact( 'common_no','customers','keyword','keyword2','frdate','todate' );
+        $customers = $query
+            ->orderBy('active_cancel', 'asc')
+            ->sortable()
+            ->paginate(300);
+
+        $common_no = '00_2';
+        $frdate    = null;
+        $todate    = null;
+
+        $compacts = compact('common_no', 'customers', 'keyword', 'keyword2', 'frdate', 'todate');
+
         Log::info('customer serch END');
-
-        // return view('customer.index', ['customers' => $customers]);
         return view('customer.index', $compacts);
     }
+
     /**
      * 顧客管理一覧表 CSV ダウンロード 2026/01/21
      */
