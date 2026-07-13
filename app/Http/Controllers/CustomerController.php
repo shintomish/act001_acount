@@ -637,6 +637,34 @@ class CustomerController extends Controller
             $customer = Customer::find($id);
             $customer->deleted_at     = now();
             $result = $customer->save();
+
+            // 該当顧客に紐づく利用者を controlusers(中間テーブル) から特定
+            // controlusers.customer_id = customers.id / controlusers.user_id = users.id
+            $userIds = DB::table('controlusers')
+                ->where('customer_id', $id)
+                ->whereNull('deleted_at')
+                ->pluck('user_id');
+
+            // 紐づく users を論理削除
+            if ($userIds->isNotEmpty()) {
+                DB::table('users')
+                    ->whereIn('id', $userIds)
+                    ->whereNull('deleted_at')
+                    ->update(['deleted_at' => now()]);
+            }
+
+            // 中間テーブル controlusers も論理削除
+            DB::table('controlusers')
+                ->where('customer_id', $id)
+                ->whereNull('deleted_at')
+                ->update(['deleted_at' => now()]);
+
+            // 旧仕様の直接紐づけ(users.user_id = customers.id)も念のため論理削除
+            DB::table('users')
+                ->where('user_id', $id)
+                ->whereNull('deleted_at')
+                ->update(['deleted_at' => now()]);
+
             DB::commit();
             Log::info('beginTransaction - customer destroy end(commit)');
         }
