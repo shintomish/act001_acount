@@ -174,11 +174,23 @@ class Controller extends BaseController
                 ->first();
             array_push($ret_val, $customers );
 
-            $conusers = new ControlUser();
-            $conusers->organization_id = $customers->organization_id;
-            $conusers->user_id         = $u_id;
-            $conusers->customer_id     = 1;
-            $conusers->save();               //  Inserts
+            // 既に customer_id=1 の紐づけ(論理削除含む)が存在する場合は
+            // 重複INSERTを行わない。存在しないときだけ1件だけ作成する。
+            // ※これを行わないと画面表示のたびにゴミ行が量産される。
+            // ControlUser は SoftDeletes 未使用のため、通常クエリで
+            // 論理削除済み(deleted_at あり)の行も含めて重複を判定する。
+            $exists = DB::table('controlusers')
+                ->where('user_id', $u_id)
+                ->where('customer_id', 1)
+                ->exists();
+
+            if (! $exists) {
+                $conusers = new ControlUser();
+                $conusers->organization_id = $customers->organization_id;
+                $conusers->user_id         = $u_id;
+                $conusers->customer_id     = 1;
+                $conusers->save();               //  Inserts
+            }
         }
         // Log::debug('auth_customer_findrec ret_val = ' . print_r($ret_val,true));
         Log::info('auth_customer_findrec END $u_id = ' . print_r($u_id ,true));
