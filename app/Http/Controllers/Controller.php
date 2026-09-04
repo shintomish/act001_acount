@@ -115,8 +115,18 @@ class Controller extends BaseController
 
         Log::warning($detail);
 
+        // 2026/09/05 追加
+        // config:cache 済みの環境では env() が .env を読まないため、
+        // config('mail.admin_alert') を先に見る。
+        $to = config('mail.admin_alert') ?: env('ADMIN_ALERT_MAIL', 'y-shintomi@aizen-sol.co.jp');
+
+        Log::info('notify_unknown_customer mail start.'
+            . ' to = '     . print_r($to, true)
+            . ' / mailer = '  . print_r(config('mail.default'), true)
+            . ' / host = '    . print_r(config('mail.mailers.smtp.host'), true)
+            . ' / from = '    . print_r(config('mail.from.address'), true));
+
         try {
-            $to = env('ADMIN_ALERT_MAIL', 'y-shintomi@aizen-sol.co.jp');
             \Illuminate\Support\Facades\Mail::raw(
                 "顧客が特定できない利用者を検出しました。\n"
                 . "利用者顧客管理(controlusers)の設定をご確認ください。\n\n"
@@ -125,9 +135,12 @@ class Controller extends BaseController
                     $message->to($to)->subject('【要対応】顧客未設定の利用者を検出しました');
                 }
             );
+
+            Log::info('notify_unknown_customer mail sent. to = ' . print_r($to, true));
         } catch (\Throwable $e) {
             // メール送信失敗しても処理は止めない
             Log::error('notify_unknown_customer mail failed : ' . $e->getMessage());
+            Log::error('notify_unknown_customer mail failed trace : ' . $e->getTraceAsString());
         }
     }
 
