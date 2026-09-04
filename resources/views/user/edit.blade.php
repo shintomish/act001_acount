@@ -79,15 +79,34 @@
                                             <label for="">顧客</label>
                                         </div>
                                         <div class="col-6">
-                                            <select class="custom-select d-block w-100" id="user_id" name="user_id">
-                                                @foreach ($customers as $customers2)
-                                                    @if($customers2->id==$user->user_id)
-        <option selected="selected" value="{{$customers2->id}}">{{$customers2->business_name}}</option>
-                                                    @else
-        <option value="{{$customers2->id}}">{{$customers2->business_name}}</option>
-                                                    @endif
-                                                @endforeach
+{{-- 2026/09/04 変更 --}}
+{{-- 顧客(user_id)は編集不可。ここを変更すると controlusers の紐づけと不整合になり、 --}}
+{{-- 旧顧客のデータが見え続ける等の問題が起きるため。                                --}}
+{{-- 顧客の変更・追加は 利用者顧客管理(ctluser) で行う。                             --}}
+                                            @php
+                                                // 現在の顧客名を求める。
+                                                // $customers は解約(active_cancel=3)を除外しているため、
+                                                // 見つからない場合に備えてフォールバックを用意する。
+                                                $selected_business_name = null;
+                                                foreach ($customers as $customers2) {
+                                                    if ($customers2->id == $user->user_id) {
+                                                        $selected_business_name = $customers2->business_name;
+                                                        break;
+                                                    }
+                                                }
+                                            @endphp
+                                            <select class="custom-select d-block w-100" id="user_id" disabled>
+                                                @if(!is_null($selected_business_name))
+        <option selected="selected" value="{{$user->user_id}}">{{$selected_business_name}}</option>
+                                                @else
+        <option selected="selected" value="{{$user->user_id}}">（顧客ID:{{$user->user_id}} 未登録または解約済み）</option>
+                                                @endif
                                             </select>
+                                            {{-- disabled な select は送信されないため hidden で現在値を送る --}}
+                                            <input type="hidden" name="user_id" value="{{ $user->user_id }}">
+                                            <small class="form-text text-muted">
+                                                顧客は変更できません。顧客の変更・追加は「利用者顧客管理」で行ってください。
+                                            </small>
                                         </div>
                                     </div>
                                 </div>
