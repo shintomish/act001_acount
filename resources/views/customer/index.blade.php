@@ -227,8 +227,13 @@
                                     <form action="{{ route('customer.destroy', $customer->id)}}" method="POST">
                                             @csrf
                                             @method('DELETE')
+{{-- 2026/09/05 修正 --}}
+{{-- 顧客名を onclick の JS 文字列へ直接埋め込むと、Blade の HTML エスケープでは --}}
+{{-- 防げない XSS になる（属性値の &quot; がブラウザで " に復号され JS 文字列を閉じる）。 --}}
+{{-- data 属性に出して dataset 経由で読むことで、HTML エスケープのみで安全になる。 --}}
                                             <input class="btn btn-danger btn-sm" type="submit" value="削除" id="btn_del"
-                                            onclick='return confirm("「{{ $customer->business_name }}」を削除しますか？");'>
+                                            data-name="{{ $customer->business_name }}"
+                                            onclick='return confirm("「" + this.dataset.name + "」を削除しますか？");'>
 
                                     </form>
                                 </div>
