@@ -6,6 +6,7 @@ use Validator;
 // use DateTime;
 use App\Models\User;
 use App\Models\Operation;
+use App\Models\ControlUser;
 // use App\Models\Organization;
 // use App\Models\Customer;
 // use App\Models\Parameter;
@@ -237,6 +238,13 @@ class UserController extends Controller
             $operation->admin_flg       = $request->admin_flg;
             $operation->save();         //  Inserts
 
+            // 2026/09/04 追加
+            // 利用者顧客管理(controlusers)の紐づけをここで作成する。
+            // 以前は登録時に作られず、初回画面表示時の自動補完
+            // (Controller@auth_customer_findrec) 任せだったため、
+            // customer_id = 1 (アルケーエコ) が割り当てられる障害が発生していた。
+            $this->sync_controluser($user);
+
             DB::commit();
             Log::info('beginTransaction - user store end(commit)');
         }
@@ -339,7 +347,18 @@ class UserController extends Controller
             // $user->username = $request->username;
             $user->name     = $request->name;
             $user->email    = $request->email;
-            $user->user_id  = $request->user_id;
+            // 2026/09/04 変更
+            // 顧客名(user_id)は編集させない。
+            // ここを変更すると controlusers の紐づけと不整合になり、
+            // 旧顧客のデータが見え続ける等の問題が起きるため。
+            // 顧客の変更・追加は 利用者顧客管理(ctluser) で行う。
+            // $user->user_id  = $request->user_id;
+            if ($user->user_id != $request->user_id) {
+                Log::warning('user update: user_id の変更は許可されていません。'
+                    . ' users.id = '  . print_r($id, true)
+                    . ' / current = ' . print_r($user->user_id, true)
+                    . ' / request = ' . print_r($request->user_id, true));
+            }
             $user->login_flg  = $request->login_flg;
             $user->admin_flg  = $request->admin_flg;
             if($request->filled('password')) { // パスワード入力があるときだけ変更
@@ -348,6 +367,11 @@ class UserController extends Controller
                 //Hash::make($request->newPassword)
             }
             $result = $user->save();
+
+            // 2026/09/04 追加
+            // 既存利用者で controlusers の紐づけが無い場合はここで補完する。
+            $this->sync_controluser($user);
+
             DB::commit();
             Log::info('beginTransaction - user update end(commit)');
         }
@@ -363,6 +387,65 @@ class UserController extends Controller
         session()->flash('toastr', config('toastr.update'));
         return redirect()->route('user.index');
 
+    }
+
+    /**
+     * 利用者と顧客の紐づけ(controlusers)を作成する。
+     * 2026/09/04 追加。
+     *
+     * - users.user_id が有効な顧客を指しているときだけ作成する。
+     * - 既に同じ紐づけがある場合は何もしない(論理削除済みなら復活させる)。
+     * - 他の紐づけ(複数法人)は一切触らない。
+     *
+     * @param  \App\Models\User $user
+     * @return void
+     */
+    private function sync_controluser($user)
+    {
+        if (empty($user->user_id)) {
+            Log::warning('sync_controluser: users.user_id が未設定です。users.id = ' . print_r($user->id, true));
+            return;
+        }
+
+        $customer = DB::table('customers')
+            ->where('id', $user->user_id)
+            ->whereNull('deleted_at')
+            // `active_cancel` 1:契約 2:SPOT 3:解約 → 解約には紐づけない
+            ->where('active_cancel', '!=', 3)
+            ->first();
+
+        if (is_null($customer)) {
+            Log::warning('sync_controluser: 顧客が存在しない、または解約済みです。'
+                . ' users.id = '      . print_r($user->id, true)
+                . ' / users.user_id = ' . print_r($user->user_id, true));
+            return;
+        }
+
+        // ControlUser は SoftDeletes 未使用のため、論理削除済みの行も含めて判定する
+        $exists = DB::table('controlusers')
+            ->where('user_id', $user->id)
+            ->where('customer_id', $user->user_id)
+            ->first();
+
+        if (is_null($exists)) {
+            $controluser = new ControlUser();
+            $controluser->organization_id = $customer->organization_id;
+            $controluser->user_id         = $user->id;
+            $controluser->customer_id     = $user->user_id;
+            $controluser->save();         //  Inserts
+
+            Log::info('sync_controluser: 紐づけを作成しました。'
+                . ' user_id = '     . print_r($user->id, true)
+                . ' / customer_id = ' . print_r($user->user_id, true));
+        }
+        elseif (! is_null($exists->deleted_at)) {
+            // 論理削除済みの紐づけは復活させる
+            DB::table('controlusers')
+                ->where('id', $exists->id)
+                ->update(['deleted_at' => null, 'updated_at' => now()]);
+
+            Log::info('sync_controluser: 論理削除済みの紐づけを復活しました。controlusers.id = ' . print_r($exists->id, true));
+        }
     }
 
     /**
@@ -384,6 +467,20 @@ class UserController extends Controller
             $user = User::find($id);
             $user->deleted_at     = now();
             $result = $user->save();
+
+            // 2026/09/04 追加
+            // 利用者顧客管理(controlusers)の紐づけも論理削除する。
+            // 残しておくと、同じ利用者を再登録した際などに
+            // 旧顧客の紐づけが復活して他社データが見えてしまう懸念があるため。
+            $cnt = DB::table('controlusers')
+                ->where('user_id', $id)
+                ->whereNull('deleted_at')
+                ->update(['deleted_at' => now(), 'updated_at' => now()]);
+
+            Log::info('user destroy: controlusers を論理削除しました。'
+                . ' users.id = ' . print_r($id, true)
+                . ' / count = '  . print_r($cnt, true));
+
             DB::commit();
             Log::info('beginTransaction - user destroy end(commit)');
         }

@@ -25,6 +25,125 @@ class Controller extends BaseController
 {
     use AuthorizesRequests, DispatchesJobs, ValidatesRequests;
 
+    /**
+     * 顧客が特定できない利用者に割り当てるダミーの顧客ID。
+     * 2026/09/04 追加。
+     * 以前は customer_id = 1 (アルケーエコ = 運営会社) を割り当てていたため、
+     * 設定不備の利用者に運営会社のデータが見えてしまう懸念があった。
+     * customers テーブルには実体を作らず、この番号を「データ登録不明」として扱う。
+     */
+    const UNKNOWN_CUSTOMER_ID   = 999999;
+    const UNKNOWN_CUSTOMER_NAME = 'データ登録不明';
+
+    /**
+     * 「データ登録不明」を表す、DBに保存しない Customer オブジェクトを返す。
+     * 画面側は id / business_name / individual_class / foldername しか
+     * 参照しないため、それらに安全な既定値を入れて返す。
+     */
+    public function unknown_customer()
+    {
+        $customer                   = new Customer();
+        $customer->id               = self::UNKNOWN_CUSTOMER_ID;
+        $customer->organization_id  = 0;
+        $customer->business_name    = self::UNKNOWN_CUSTOMER_NAME;
+        $customer->individual_class = 1;
+        $customer->active_cancel    = 1;
+        // 実在しないフォルダー名。ファイル一覧は必ず空になる。
+        $customer->foldername       = 'folder' . self::UNKNOWN_CUSTOMER_ID;
+        // 保存させない (exists=false のまま返す)
+        return $customer;
+    }
+
+    /**
+     * 利用者に紐づく顧客ID(customers.id)を、DBを更新せずに解決する。
+     * 2026/09/04 追加。ログイン可否判定・利用者登録時の紐づけ作成で共用する。
+     *
+     * 優先順位
+     *   (1) controlusers に有効な紐づけがある → その顧客ID
+     *   (2) users.user_id が有効な顧客        → その顧客ID
+     *   (3) いずれも無い                      → null (= データ登録不明)
+     *
+     * @param  int $u_id users.id
+     * @return int|null  customers.id
+     */
+    public function resolve_customer_id($u_id)
+    {
+        $customer_id = DB::table('controlusers')
+            ->join('customers', 'controlusers.customer_id', '=', 'customers.id')
+            ->where('controlusers.user_id', $u_id)
+            ->whereNull('controlusers.deleted_at')
+            ->whereNull('customers.deleted_at')
+            // `active_cancel` 1:契約 2:SPOT 3:解約
+            ->where('customers.active_cancel', '!=', 3)
+            ->orderBy('controlusers.customer_id', 'asc')
+            ->value('customers.id');
+
+        if (! empty($customer_id)) {
+            return (int) $customer_id;
+        }
+
+        // controlusers に無い場合は users.user_id (所属顧客) を見る
+        $user = User::find($u_id);
+        if (is_null($user) || empty($user->user_id)) {
+            return null;
+        }
+
+        $customer_id = Customer::where('id', $user->user_id)
+            ->whereNull('deleted_at')
+            // `active_cancel` 1:契約 2:SPOT 3:解約 → 解約は対象外
+            ->where('active_cancel', '!=', 3)
+            ->value('id');
+
+        return empty($customer_id) ? null : (int) $customer_id;
+    }
+
+    /**
+     * 顧客が特定できない利用者について、管理者へ警告ログとメールを送る。
+     * 2026/09/04 追加。メール送信に失敗しても呼び出し元の処理は止めない。
+     *
+     * @param  \App\Models\User $user
+     * @param  string             $context 呼び出し箇所の識別子
+     */
+    public function notify_unknown_customer($user, $context = '')
+    {
+        $detail = '[' . $context . '] 顧客が特定できない利用者を検出しました。'
+            . ' users.id = '        . print_r($user->id, true)
+            . ' / name = '          . print_r($user->name, true)
+            . ' / email = '         . print_r($user->email, true)
+            . ' / users.user_id = ' . print_r($user->user_id, true)
+            . ' / login_flg = '     . print_r($user->login_flg, true);
+
+        Log::warning($detail);
+
+        // 2026/09/05 追加
+        // config:cache 済みの環境では env() が .env を読まないため、
+        // config('mail.admin_alert') を先に見る。
+        $to = config('mail.admin_alert') ?: env('ADMIN_ALERT_MAIL', 'y-shintomi@aizen-sol.co.jp');
+
+        Log::info('notify_unknown_customer mail start.'
+            . ' to = '     . print_r($to, true)
+            . ' / mailer = '  . print_r(config('mail.default'), true)
+            . ' / host = '    . print_r(config('mail.mailers.smtp.host'), true)
+            . ' / from = '    . print_r(config('mail.from.address'), true));
+
+        try {
+            \Illuminate\Support\Facades\Mail::raw(
+                "顧客が特定できない利用者を検出しました。\n"
+                . "利用者顧客管理(controlusers)の設定をご確認ください。\n\n"
+                . $detail . "\n",
+                function ($message) use ($to) {
+                    $message->to($to)->subject('【要対応】顧客未設定の利用者を検出しました');
+                }
+            );
+
+            Log::info('notify_unknown_customer mail sent. to = ' . print_r($to, true));
+        } catch (\Throwable $e) {
+            // メール送信失敗しても処理は止めない
+            Log::error('notify_unknown_customer mail failed : ' . $e->getMessage());
+            Log::error('notify_unknown_customer mail failed trace : ' . $e->getTraceAsString());
+        }
+    }
+
     //--------------------------------------------------------------------------------------------------
     //-- システム関連
     //--------------------------------------------------------------------------------------------------
@@ -56,6 +175,14 @@ class Controller extends BaseController
         // $u_id = $user->user_id;
 
         $ret_val = Customer::where('id',$u_id)->first();
+
+        // 2026/09/04 追加
+        // 「データ登録不明」または実在しない顧客IDのときは、
+        //   呼び出し元で null 参照エラーにならないようダミーを返す。
+        if (is_null($ret_val)) {
+            Log::warning('auth_user_foldername: customer not found. id = ' . print_r($u_id, true));
+            $ret_val = $this->unknown_customer();
+        }
 
         // Log::debug('auth_user_foldername Customer ret_val = ' . print_r(json_decode($ret_val),true));
         Log::info('auth_user_foldername END');
@@ -167,18 +294,50 @@ class Controller extends BaseController
                 array_push($ret_val, $customers );
             }
         } else {
-            // 利用者を顧客に変更し複数法人が設定されていないときアルケーエコにし複数法人に登録する
+            // controlusers に行がない利用者の自動補完。
+            // 2026/09/04 修正: 以前は無条件で customer_id = 1(アルケーエコ) を
+            //   紐づけていたため、新規登録した利用者のアップロード先が
+            //   常にアルケーエコになってしまっていた。
+            //   users.user_id に保持されている所属顧客(customers.id)を優先する。
             $ret_val = array();
-            $customers = Customer::where('id',1)
-                ->orderBy('id', 'asc')
-                ->first();
+
+            $customer_id = auth::user()->user_id;
+            $customers   = null;
+            if (!empty($customer_id)) {
+                $customers = Customer::where('id', $customer_id)
+                    ->whereNull('deleted_at')
+                    // `active_cancel` 1:契約 2:SPOT 3:解約 → 解約は対象外
+                    ->where('active_cancel', '!=', 3)
+                    ->first();
+            }
+            // 所属顧客が特定できない場合は「データ登録不明」(999999)。
+            // 以前はここで customer_id = 1 (アルケーエコ) を割り当てていたため、
+            // 設定不備の利用者に運営会社のデータが見えてしまう懸念があった。
+            if (is_null($customers)) {
+                Log::warning('auth_customer_findrec: customer not found. u_id = ' . print_r($u_id, true)
+                    . ' / users.user_id = ' . print_r(auth::user()->user_id, true));
+                $customer_id = self::UNKNOWN_CUSTOMER_ID;
+                $customers   = $this->unknown_customer();
+            }
             array_push($ret_val, $customers );
 
-            $conusers = new ControlUser();
-            $conusers->organization_id = $customers->organization_id;
-            $conusers->user_id         = $u_id;
-            $conusers->customer_id     = 1;
-            $conusers->save();               //  Inserts
+            // 既に同じ紐づけ(論理削除含む)が存在する場合は
+            // 重複INSERTを行わない。存在しないときだけ1件だけ作成する。
+            // ※これを行わないと画面表示のたびにゴミ行が量産される。
+            // ControlUser は SoftDeletes 未使用のため、通常クエリで
+            // 論理削除済み(deleted_at あり)の行も含めて重複を判定する。
+            $exists = DB::table('controlusers')
+                ->where('user_id', $u_id)
+                ->where('customer_id', $customer_id)
+                ->exists();
+
+            if (! $exists) {
+                $conusers = new ControlUser();
+                $conusers->organization_id = $customers->organization_id;
+                $conusers->user_id         = $u_id;
+                $conusers->customer_id     = $customer_id;
+                $conusers->save();               //  Inserts
+            }
         }
         // Log::debug('auth_customer_findrec ret_val = ' . print_r($ret_val,true));
         Log::info('auth_customer_findrec END $u_id = ' . print_r($u_id ,true));

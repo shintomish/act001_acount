@@ -82,6 +82,45 @@ class LoginController extends Controller
         $this->middleware('guest')->except('logout');
     }
 
+    /**
+     * 認証成功直後の処理。
+     * 2026/09/04 追加。
+     * 顧客(login_flg=1)の利用者で、紐づく顧客が特定できない場合は
+     * ログインを中止する。
+     * 以前はこの状態の利用者に customer_id = 1 (アルケーエコ = 運営会社) が
+     * 自動で割り当てられ、運営会社のデータが見えてしまう懸念があった。
+     *
+     * @param  \Illuminate\Http\Request $request
+     * @param  mixed                     $user
+     * @return mixed
+     */
+    protected function authenticated(Request $request, $user)
+    {
+        // login_flg 1:顧客  2:社員  3:所属
+        // 顧客画面(topclient)のみ auth_customer_findrec に依存するため顧客のみ判定する
+        if ($user->login_flg != 1) {
+            return null;
+        }
+
+        if (! is_null($this->resolve_customer_id($user->id))) {
+            return null;   // 顧客を特定できたので通常どおりログイン
+        }
+
+        // 顧客が特定できない → 警告ログ + 管理者へメール通知
+        $this->notify_unknown_customer($user, 'login');
+
+        // ログインを中止する
+        $this->guard()->logout();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        return redirect()->route('login')
+            ->withErrors([
+                $this->username() => 'お客様情報が設定されていないためログインできません。'
+                                   . '管理者へ通知しましたので、しばらくお待ちください。',
+            ]);
+    }
+
     public function logout(Request $request)
     {
         $user = $request->user();
