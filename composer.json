@@ -16,6 +16,7 @@
         "laravel/helpers": "^1.5",
         "laravel/sanctum": "^2.11",
         "laravel/tinker": "^2.5",
+        "laravel/ui": "^3.3",
         "mobiledetect/mobiledetectlib": "^2.8",
         "pion/laravel-chunk-upload": "^1.4",
         "spatie/laravel-backup": "^6.16",
@@ -24,8 +25,7 @@
     "require-dev": {
         "facade/ignition": "^2.5",
         "fakerphp/faker": "^1.9.1",
-        "laravel/sail": "^1.25",
-        "laravel/ui": "3.4.6",
+        "laravel/sail": "^1.0.1",
         "mockery/mockery": "^1.4.2",
         "nunomaduro/collision": "^5.0",
         "phpunit/phpunit": "^9.3.3"

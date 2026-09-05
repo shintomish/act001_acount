@@ -637,6 +637,58 @@ class CustomerController extends Controller
             $customer = Customer::find($id);
             $customer->deleted_at     = now();
             $result = $customer->save();
+
+            // 該当顧客に紐づく利用者を controlusers(中間テーブル) から特定
+            // controlusers.customer_id = customers.id / controlusers.user_id = users.id
+            $userIds = DB::table('controlusers')
+                ->where('customer_id', $id)
+                ->whereNull('deleted_at')
+                ->pluck('user_id');
+
+            // 先に「この顧客に対する中間テーブル行のみ」を論理削除する
+            DB::table('controlusers')
+                ->where('customer_id', $id)
+                ->whereNull('deleted_at')
+                ->update(['deleted_at' => now()]);
+
+            // 上記削除後、他の有効な顧客に紐づいていない利用者だけを論理削除する。
+            // ※複数顧客に紐づく利用者(users.id)を巻き添えで削除しないため、
+            //   controlusers に有効な行が残っている利用者は削除しない。
+            foreach ($userIds as $uid) {
+                $stillLinked = DB::table('controlusers')
+                    ->where('user_id', $uid)
+                    ->whereNull('deleted_at')
+                    ->exists();
+
+                if (! $stillLinked) {
+                    DB::table('users')
+                        ->where('id', $uid)
+                        ->whereNull('deleted_at')
+                        ->update(['deleted_at' => now()]);
+                }
+            }
+
+            // 旧仕様の直接紐づけ(users.user_id = customers.id)も同様に、
+            // 他の有効な顧客に紐づいていない利用者に限って論理削除する。
+            $directUserIds = DB::table('users')
+                ->where('user_id', $id)
+                ->whereNull('deleted_at')
+                ->pluck('id');
+
+            foreach ($directUserIds as $uid) {
+                $stillLinked = DB::table('controlusers')
+                    ->where('user_id', $uid)
+                    ->whereNull('deleted_at')
+                    ->exists();
+
+                if (! $stillLinked) {
+                    DB::table('users')
+                        ->where('id', $uid)
+                        ->whereNull('deleted_at')
+                        ->update(['deleted_at' => now()]);
+                }
+            }
+
             DB::commit();
             Log::info('beginTransaction - customer destroy end(commit)');
         }

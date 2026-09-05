@@ -227,10 +227,8 @@
                                     <form action="{{ route('customer.destroy', $customer->id)}}" method="POST">
                                             @csrf
                                             @method('DELETE')
-                                            {{-- <input class="btn btn-danger btn-sm" type="submit" value="削除" id="btn_del"
-                                            onclick='return confirm("削除しますか？");'> --}}
-                                            <input class="btn btn-danger btn-sm" type="hidden" value="削除" id="btn_del"
-                                            onclick='return confirm("削除しますか？");'>
+                                            <input class="btn btn-danger btn-sm" type="submit" value="削除" id="btn_del"
+                                            onclick='return confirm("「{{ $customer->business_name }}」を削除しますか？");'>
 
                                     </form>
                                 </div>
