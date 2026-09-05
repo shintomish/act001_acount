@@ -91,6 +91,7 @@ return [
         'address' => env('MAIL_FROM_ADDRESS', 'hello@example.com'),
         'name' => env('MAIL_FROM_NAME', 'Example'),
     ],
+    'admin_alert' => env('ADMIN_ALERT_MAIL', 'y-shintomi@aizen-sol.co.jp'),
 
     /*
     |--------------------------------------------------------------------------
