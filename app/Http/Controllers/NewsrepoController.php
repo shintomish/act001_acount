@@ -349,11 +349,26 @@ class NewsrepoController extends Controller
                                         'required',
                                         'max:2000', //2023/11/13 1000->2000 DB=2048
                                         ],
+                    // 2026/10/22 Mail添付
+                    'attach_files'    => [
+                                        'nullable',
+                                        'array',
+                                        'max:3',
+                                        ],
+                    'attach_files.*'  => [
+                                        'file',
+                                        'mimes:jpg,jpeg,png,pdf',
+                                        'max:2048',
+                                        ],
                 ];
 
         $messages = [
                     'comment.required'         => 'コメントは入力必須項目です。',
                     'comment.max'              => 'コメントは2000文字までです。',
+                    'attach_files.max'         => '添付ファイルは3ファイルまでです。',
+                    'attach_files.*.file'      => '添付ファイルのアップロードに失敗しました。',
+                    'attach_files.*.mimes'     => '添付ファイルは jpg / png / pdf のみです。',
+                    'attach_files.*.max'       => '添付ファイルは1ファイル2MBまでです。',
                     ];
 
         $validator = Validator::make($request->all(), $rules, $messages);
@@ -450,19 +465,20 @@ class NewsrepoController extends Controller
 
         $customers = DB::select($query);
 
-        //--- 2022/11/15 Mail添付 下記を追記
-        $postData = $request->all();
-        // if (isset($postData['file'])) {
-        //     $image     = $postData['file'];
-        //     $file_name = $image->getClientOriginalName();         // FileName
-        //     Log::info('newsrepo sendmail $count 添付あり = ' . print_r($count, true));
-        //     $postData['putFileInfo'] = $this->mailAttachmentService->saveFile($request->all());
-        // } else {
-        //     $file_name = '';
-        //     $postData['putFileInfo'] = '';
-        //     Log::info('newsrepo sendmail $count 添付なし = ' . print_r($count, true));
-        // }
-        //--- 2022/11/15 Mail添付 上記までを追記
+        //--- 2026/10/22 Mail添付 画像は本文に表示、PDFは添付
+        $attach_files = array();
+        $file_names   = array();
+        foreach ((array)$request->file('attach_files') as $file) {
+            $attach_files[] = [
+                'path' => $file->getRealPath(),
+                'name' => $file->getClientOriginalName(),
+                'mime' => $file->getMimeType(),
+            ];
+            $file_names[] = $file->getClientOriginalName();
+        }
+        $file_name = mb_substr(implode(',', $file_names), 0, 100);
+        Log::info('newsrepo sendmail 添付 = ' . print_r($file_names, true));
+        //--- 2026/10/22 Mail添付 上記まで
 
         //139件 法人69  個人70
         Log::info('newsrepo sendmail $count = ' . print_r($count, true));
@@ -494,7 +510,7 @@ class NewsrepoController extends Controller
             Log::info('newsrepo sendmail $ret_val = ' . print_r($ret_val, true));
             Log::info('newsrepo sendmail $toadr   = ' . print_r($toadr, true));
 
-            Mail::to($toadr)->bcc($ret_val)->send(new MailSend($name, $comment, $postData));
+            Mail::to($toadr)->bcc($ret_val)->send(new MailSend($name, $comment, $attach_files));
 
         } else {
             $validator = "送信先がありません。";
@@ -553,7 +569,7 @@ class NewsrepoController extends Controller
             $newsrepo->individual_mail   = $request->individual_mail;
             $newsrepo->interim_mail      = $request->interim_mail;
             $newsrepo->announce_month    = $request->announce_month;
-            // $newsrepo->file_name         = $file_name;
+            $newsrepo->file_name         = $file_name;   // 2026/10/22 添付ファイル名
             $newsrepo->urgent_flg        = 2;   //2022/12/30 至急フラグ(1):通常 (2):至急
             $newsrepo->updated_at        = now();
             $newsrepo->save();           //  Inserts

@@ -37,6 +37,13 @@ $comment = replaceUrl($comment);
     【---お知らせ内容---】<br>
     {!! nl2br($comment) !!}<br>
 </p>
+@if (!empty($images))
+<p>
+    @foreach ($images as $image)
+    <img src="{{ $message->embedData(file_get_contents($image['path']), $image['name'], $image['mime']) }}" alt="{{ $image['name'] }}" style="max-width:100%; border:1px solid #ccc; margin-bottom:10px;"><br>
+    @endforeach
+</p>
+@endif
 <p>
     =============================================<br>
     〒110-0015 東京都台東区東上野3-14-7 龍田ビル５F<br>
