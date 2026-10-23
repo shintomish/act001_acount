@@ -67,8 +67,6 @@ class Kernel extends ConsoleKernel
         // 2025/02/09 weekly-->twiceMonthly(1, 15, '03:00');
         // $schedule->command('backup:run')
         //     ->twiceMonthly(1, 15, '03:00');                // 毎月1日と15日の03:00に実行する
-        
-        //    $schedule->command('cache:clear')->everyMinute()->name('test-clear-cache');
 
     }
 
