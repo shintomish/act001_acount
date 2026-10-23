@@ -171,14 +171,12 @@
                                         </select>
                                     </div>
 
-                                    {{-- 2022/11/15 Mail添付 下記を追記 --}}
-                                    {{-- <div class="file"> --}}
-                                        {{-- <label style="margin-bottom:5px;">添付ファイル</label> --}}
-                                    {{-- <input style="margin-left:7px;" type="file" id="file" name="file" class="form-control"> --}}
-                                        {{-- <input type="hidden" name="organization_id" value="{{ $organization_id }}"> --}}
-                                        {{-- <input type="hidden" name="user_id" value="{{ $user_id }}"> --}}
-                                    {{-- </div> --}}
-                                    {{-- 2022/11/15 Mail添付 上記を追記 --}}
+                                    {{-- 2026/10/22 Mail添付 画像は本文に表示、PDFは添付 (メール送信時のみ有効) --}}
+                                    <div class="col-6">
+                                        <label style="margin-right:6px;" for="attach_files">添付ファイル</label>
+                                        <input style="margin-bottom:5px;" type="file" id="attach_files" name="attach_files[]" class="form-control" multiple accept=".jpg,.jpeg,.png,.pdf">
+                                        <small class="text-muted">jpg / png / pdf、最大3ファイル・1ファイル2MBまで（画像は本文に表示、PDFは添付）</small>
+                                    </div>
                                 </div>
 
                                 <div class="form-group">
