@@ -13,3 +13,6 @@ npm-debug.log
 yarn-error.log
 /.idea
 /.vscode
+mutagen*.tar.gz
+.claude/
+storage/debugbar/
