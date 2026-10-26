@@ -3,6 +3,7 @@
 namespace App\Exceptions;
 
 use Illuminate\Support\Facades\Log;
+use Illuminate\Session\TokenMismatchException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Support\ViewErrorBag; // add
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
