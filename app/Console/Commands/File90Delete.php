@@ -48,8 +48,6 @@ class File90Delete extends Command
      */
     public function handle()
     {
-        Log::info('schedule command:File90Delete START ');
-
         // --- userdata配下の90日経過したファイルを削除 ----
         // Log::info('schedule File90Delete START');
         // Log::useFiles(storage_path().'/logs/actver-File90Delete-st'.__CLASS__.'-'.Carbon::now()->format('Y-m-d').'.log');
@@ -92,8 +90,6 @@ class File90Delete extends Command
         //  *                       urgent_flg = 1 にする
         $this->news_check();
 
-        Log::info('schedule command:File90Delete END ');
-        
         return 0;
     }
 

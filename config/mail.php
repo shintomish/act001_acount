@@ -91,18 +91,6 @@ return [
         'address' => env('MAIL_FROM_ADDRESS', 'hello@example.com'),
         'name' => env('MAIL_FROM_NAME', 'Example'),
     ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Admin Alert Address
-    |--------------------------------------------------------------------------
-    |
-    | 2026/09/05 追加
-    | 顧客未設定の利用者を検出したときなど、管理者へ通知するアドレス。
-    | config:cache 済みの環境でも読めるよう、ここで env() を解決しておく。
-    |
-    */
-
     'admin_alert' => env('ADMIN_ALERT_MAIL', 'y-shintomi@aizen-sol.co.jp'),
 
     /*
