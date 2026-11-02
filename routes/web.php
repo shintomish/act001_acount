@@ -70,6 +70,7 @@ Route::get('topcli_pdf02',     'App\Http\Controllers\TopClientController@show_up
 Route::get('topcli_pdf03',     'App\Http\Controllers\TopClientController@show_up03')->name('topcli_pdf03');
 Route::get('topclinewzip2024',     'App\Http\Controllers\TopClientController@show_2024')->name('topclinewzip2024');
 Route::get('topclinewzip2025',     'App\Http\Controllers\TopClientController@show_2025')->name('topclinewzip2025');
+Route::get('topclinewzip2026',     'App\Http\Controllers\TopClientController@show_2026')->name('topclinewzip2026');
 
 //-----------------------------------------------------------------------------------------------
 //- Camera Capture

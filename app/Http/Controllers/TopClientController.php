@@ -637,6 +637,29 @@ class TopClientController extends Controller
 
     /**
      * Display the specified resource.
+     * 2026/11/02 '令和8年_年末調整フォーム.zip' 配置
+     * @param  int  $id
+     * @return \Illuminate\Http\Response
+     */
+    public function show_2026()
+    {
+        Log::info('topclient show_2026 START');
+
+        $disk = 'local';  // or 's3'
+        $storage = Storage::disk($disk);
+        $file_name = '令和8年_年末調整フォーム.zip';
+        $pdf_path = 'public/pdf/' . $file_name;
+        $file = $storage->get($pdf_path);
+
+        Log::info('topclient show_2026 END');
+
+        return response($file, 200)
+            ->header('Content-Type', 'application/zip')
+            ->header('Content-Disposition', 'inline; filename="' . $file_name . '"');
+    }
+
+    /**
+     * Display the specified resource.
      *
      * @param  int  $id
      * @return \Illuminate\Http\Response
